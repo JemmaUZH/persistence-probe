@@ -1,0 +1,23 @@
+[project]
+name = "persistence-probe"
+version = "0.0.1"
+requires-python = ">=3.10"
+dependencies = [
+  "jsonschema>=4.0",
+  "Pillow>=9.0",
+]
+
+[project.optional-dependencies]
+oasis = [
+  "torch",
+  "torchvision",
+  "av",
+  "safetensors",
+  "einops",
+  "diffusers",
+  "timm",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

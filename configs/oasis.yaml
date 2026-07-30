@@ -1,0 +1,100 @@
+# Extracted from etched-ai/open-oasis on 2026-07-30.
+# Do not edit these values by guesswork; update only after re-reading the source repo/weights.
+
+source:
+  code_repo: "https://github.com/etched-ai/open-oasis"
+  local_code_path: "external/open-oasis"
+  weights_repo: "https://huggingface.co/Etched/oasis-500m"
+  weights_access: "gated; requires Hugging Face login and accepting model conditions"
+
+weights:
+  preferred:
+    dit_checkpoint: "oasis500m.safetensors"
+    vae_checkpoint: "vit-l-20.safetensors"
+  legacy_pt_files_listed_on_huggingface:
+    - "oasis500m.pt"
+    - "vit-l-20.pt"
+
+runtime:
+  requires_cuda: true
+  torch_index_url: "https://download.pytorch.org/whl/cu121"
+  pip_dependencies:
+    - "torch"
+    - "torchvision"
+    - "einops"
+    - "diffusers"
+    - "timm"
+    - "av"
+    - "safetensors"
+
+model:
+  dit_arch: "DiT-S/2"
+  vae_arch: "vit-l-20-shallow-encoder"
+  fps: 20
+  frame_height: 360
+  frame_width: 640
+  resolution: [640, 360]
+  max_context_frames: 32
+  ddim_steps_default: 10
+  default_num_frames: 32
+  default_prompt_frames: 1
+  scaling_factor: 0.07843137255
+  max_noise_level: 1000
+  noise_abs_max: 20
+  stabilization_level: 15
+
+vae:
+  input_height: 360
+  input_width: 640
+  patch_size: 20
+  latent_dim: 16
+  latent_height: 18
+  latent_width: 32
+
+dit:
+  input_h: 18
+  input_w: 32
+  patch_size: 2
+  in_channels: 16
+  hidden_size: 1024
+  depth: 16
+  num_heads: 16
+  external_cond_dim: 25
+  max_frames: 32
+
+action_encoding:
+  source: "external/open-oasis/utils.py ACTION_KEYS and one_hot_actions"
+  dim: 25
+  keys:
+    - "inventory"
+    - "ESC"
+    - "hotbar.1"
+    - "hotbar.2"
+    - "hotbar.3"
+    - "hotbar.4"
+    - "hotbar.5"
+    - "hotbar.6"
+    - "hotbar.7"
+    - "hotbar.8"
+    - "hotbar.9"
+    - "forward"
+    - "back"
+    - "left"
+    - "right"
+    - "cameraX"
+    - "cameraY"
+    - "jump"
+    - "sneak"
+    - "sprint"
+    - "swapHands"
+    - "attack"
+    - "use"
+    - "pickItem"
+    - "drop"
+  binary_keys_expect_range: [0, 1]
+  camera:
+    input_key: "camera"
+    max_val: 20
+    bin_size: 0.5
+    num_buckets: 40
+    normalized_range: [-1, 1]

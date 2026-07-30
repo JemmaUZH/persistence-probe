@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "events.schema.json",
+  "title": "Episode event",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["frame_idx", "event"],
+  "properties": {
+    "frame_idx": { "type": "integer", "minimum": 0 },
+    "event": {
+      "type": "string",
+      "enum": ["intervention", "look_away", "return_start"]
+    }
+  }
+}

@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "meta.schema.json",
+  "title": "Episode metadata",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "scenario",
+    "pair_id",
+    "arm",
+    "N_away",
+    "world_seed",
+    "start_pos",
+    "probe_block",
+    "fps",
+    "resolution",
+    "model_target"
+  ],
+  "properties": {
+    "scenario": { "type": "string", "minLength": 1 },
+    "pair_id": { "type": ["string", "integer"], "pattern": "^[A-Za-z0-9_.-]+$" },
+    "arm": { "type": "string", "enum": ["intervene", "control"] },
+    "N_away": { "type": "integer", "minimum": 0 },
+    "world_seed": { "type": ["integer", "string"] },
+    "start_pos": {
+      "type": "array",
+      "prefixItems": [
+        { "type": "number" },
+        { "type": "number" },
+        { "type": "number" }
+      ],
+      "items": false,
+      "minItems": 3,
+      "maxItems": 3
+    },
+    "probe_block": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pos", "type"],
+      "properties": {
+        "pos": {
+          "type": "array",
+          "prefixItems": [
+            { "type": "number" },
+            { "type": "number" },
+            { "type": "number" }
+          ],
+          "items": false,
+          "minItems": 3,
+          "maxItems": 3
+        },
+        "type": { "type": "string", "minLength": 1 }
+      }
+    },
+    "fps": { "type": "number", "exclusiveMinimum": 0 },
+    "resolution": {
+      "type": "array",
+      "prefixItems": [
+        { "type": "integer", "minimum": 1 },
+        { "type": "integer", "minimum": 1 }
+      ],
+      "items": false,
+      "minItems": 2,
+      "maxItems": 2
+    },
+    "model_target": { "type": "string", "minLength": 1 }
+  }
+}

@@ -1,0 +1,13 @@
+.DS_Store
+__pycache__/
+.pytest_cache/
+
+# Data and generated artifacts per SPEC.md.
+episodes/
+results/
+
+# External repos and large model files should be fetched locally, not committed.
+external/
+weights/
+*.pt
+*.safetensors

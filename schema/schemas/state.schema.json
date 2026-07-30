@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "state.schema.json",
+  "title": "Per-frame state",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "probe_block_state",
+    "time_of_day",
+    "player_pos",
+    "player_yaw_pitch"
+  ],
+  "properties": {
+    "probe_block_state": { "type": "string", "minLength": 1 },
+    "time_of_day": { "type": "number" },
+    "player_pos": {
+      "type": "array",
+      "prefixItems": [
+        { "type": "number" },
+        { "type": "number" },
+        { "type": "number" }
+      ],
+      "items": false,
+      "minItems": 3,
+      "maxItems": 3
+    },
+    "player_yaw_pitch": {
+      "type": "array",
+      "prefixItems": [
+        { "type": "number" },
+        { "type": "number" }
+      ],
+      "items": false,
+      "minItems": 2,
+      "maxItems": 2
+    }
+  }
+}

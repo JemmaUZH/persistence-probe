@@ -10,9 +10,13 @@ RUN rm -f /etc/apt/sources.list.d/yarn.list \
     xauth \
     ffmpeg \
     git \
+    curl \
     unzip \
     wget \
+    x11-xserver-utils \
+    mesa-utils \
     libgl1-mesa-glx \
+    libgl1-mesa-dri \
     libglib2.0-0 \
     libxext6 \
     libxrender1 \

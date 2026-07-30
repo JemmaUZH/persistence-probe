@@ -1,10 +1,12 @@
 .DS_Store
 __pycache__/
 .pytest_cache/
+.minerl-codespaces-env
 
 # Data and generated artifacts per SPEC.md.
 episodes/
 results/
+scratch/
 
 # External repos and large model files should be fetched locally, not committed.
 external/

@@ -26,10 +26,9 @@ On GitHub:
 3. Click `Codespaces`.
 4. Create a new codespace on the main branch.
 
-The `.devcontainer/` config uses Python 3.8, xvfb, ffmpeg, and Java 11. MineRL
-official docs prefer Java 8, but Java 8 packages are awkward on current base
-images. First try Java 11; if MineRL/Malmo rejects it, switch to a custom Java 8
-base image.
+The `.devcontainer/` config uses Python 3.8, xvfb, ffmpeg, Java 11, and the
+X11/Mesa tools needed by LWJGL. MineRL/Malmo still needs Java 8 at runtime; use
+the setup script below to install a user-local JDK8.
 
 ## 2. Verify Base Environment
 
@@ -52,22 +51,25 @@ openjdk version "11..."
 
 ## 3. Install MineRL
 
-Do this manually instead of in the devcontainer build so failures are visible:
+Run the Codespaces setup script:
 
 ```bash
-python -m pip install --upgrade "pip<24" "setuptools<60" wheel
-python -m pip install "gym==0.19.0"
-python -m pip install "minerl==0.4.4"
+bash scripts/setup_minerl_codespaces.sh
 ```
 
-If `gym==0.19.0` fails, stop and paste the full error back into Codex.
+What it does:
 
-If MineRL fails with Java/Malmo errors, stop and paste the full error. Do not
-start changing recorder logic until `import minerl` works.
+- pins old pip/setuptools/wheel versions that can install `gym==0.19.0`
+- installs user-local JDK8 under `$HOME/.jdks/jdk8`
+- patches MineRL's missing `MixinGradle:dcfaf61` dependency via a local Maven repo
+- starts a local asset proxy because old ForgeGradle uses disabled HTTP
+  Minecraft asset URLs
+- builds MineRL 0.4.4 and writes `.minerl-codespaces-env`
 
 ## 4. Import Probe
 
 ```bash
+source .minerl-codespaces-env
 python - <<'PY'
 import gym
 import minerl
@@ -79,16 +81,17 @@ PY
 ## 5. MineRL Reset/Step Smoke
 
 ```bash
-xvfb-run -a python scripts/minerl_smoke.py \
+xvfb-run -a -s "-screen 0 1280x720x24 +extension RANDR +extension GLX +render" \
+  python scripts/minerl_smoke.py \
   --env MineRLBasaltFindCave-v0 \
-  --steps 5 \
+  --steps 3 \
   --output scratch/minerl_smoke
 ```
 
 Success means:
 
 - environment resets
-- five no-op steps run
+- three no-op steps run
 - PNG frames appear in `scratch/minerl_smoke/`
 
 Check:

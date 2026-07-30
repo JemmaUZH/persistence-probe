@@ -247,10 +247,7 @@ def _make_probe_env_spec(width: int, height: int, total_frames: int) -> Any:
             ]
 
         def create_server_quit_producers(self) -> list[Any]:
-            return [
-                handlers.ServerQuitFromTimeUp(max((total_frames + 512) * 50, 300_000)),
-                handlers.ServerQuitWhenAnyAgentFinishes(),
-            ]
+            return [handlers.ServerQuitFromTimeUp(max((total_frames + 512) * 50, 300_000))]
 
         def create_server_initial_conditions(self) -> list[Any]:
             return [

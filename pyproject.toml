@@ -4,6 +4,7 @@ version = "0.0.1"
 requires-python = ">=3.8"
 dependencies = [
   "jsonschema>=4.0",
+  "matplotlib>=3.7",
   "Pillow>=9.0",
 ]
 
@@ -23,4 +24,4 @@ testpaths = ["tests"]
 pythonpath = ["."]
 
 [tool.setuptools]
-packages = ["schema", "recorder", "runner", "readout"]
+packages = ["schema", "recorder", "runner", "readout", "figures"]

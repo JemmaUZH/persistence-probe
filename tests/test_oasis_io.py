@@ -59,6 +59,29 @@ def test_import_oasis_video_exports_only_generated_return_frames(tmp_path):
     manifest = json.loads(imported.manifest_path.read_text())
     assert manifest["context_frames"] == prepared.n_prompt_frames
     assert manifest["output_frames"] == prepared.generated_frames
+    assert manifest["output_frame_mode"] == "prompt_plus_generated"
+
+
+def test_import_oasis_video_accepts_generated_only_video(tmp_path):
+    episode = make_dummy_episode(tmp_path / "episodes" / "dummy_000_control", frame_count=12, width=64, height=64)
+    prepared = prepare_oasis_inputs(episode, tmp_path / "oasis_inputs", overwrite=True)
+    manifest = json.loads(prepared.manifest_path.read_text())
+    return_start = int(manifest["return_start"])
+    generated_frames = sorted((episode / "frames").glob("*.png"))[return_start:]
+    oasis_video = tmp_path / "oasis_generated_only.mp4"
+    _frames_to_video(generated_frames, oasis_video, fps=20)
+
+    imported = import_oasis_video(
+        oasis_video,
+        prepared.manifest_path,
+        tmp_path / "results" / "dummy_000_control" / "oasis",
+        overwrite=True,
+    )
+
+    assert imported.generated_frames == prepared.generated_frames
+    assert len(list(imported.output_dir.glob("gen_*.png"))) == prepared.generated_frames
+    imported_manifest = json.loads(imported.manifest_path.read_text())
+    assert imported_manifest["output_frame_mode"] == "generated_only"
 
 
 def test_import_oasis_video_fails_when_video_is_too_short(tmp_path):
@@ -68,7 +91,7 @@ def test_import_oasis_video_fails_when_video_is_too_short(tmp_path):
     manifest["generated_frames"] = 99
     prepared.manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
 
-    with pytest.raises(RunnerError, match="expected at least"):
+    with pytest.raises(RunnerError, match="expected either"):
         import_oasis_video(
             prepared.prompt_path,
             prepared.manifest_path,

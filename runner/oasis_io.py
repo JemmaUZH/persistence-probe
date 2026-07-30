@@ -219,13 +219,18 @@ def import_oasis_video(
 
     frames = _read_video_frames(video)
     expected_total = n_prompt_frames + generated_frames
-    if len(frames) < expected_total:
+    if len(frames) >= expected_total:
+        generated = frames[n_prompt_frames : n_prompt_frames + generated_frames]
+        output_frame_mode = "prompt_plus_generated"
+    elif len(frames) >= generated_frames:
+        generated = frames[:generated_frames]
+        output_frame_mode = "generated_only"
+    else:
         raise RunnerError(
-            f"Oasis video has {len(frames)} frames, expected at least {expected_total} "
-            f"({n_prompt_frames} prompt + {generated_frames} generated)"
+            f"Oasis video has {len(frames)} frames, expected either {generated_frames} generated frames "
+            f"or at least {expected_total} total frames ({n_prompt_frames} prompt + {generated_frames} generated)"
         )
 
-    generated = frames[n_prompt_frames : n_prompt_frames + generated_frames]
     for idx, frame in enumerate(generated):
         frame.save(result_path / f"gen_{idx:06d}.png")
 
@@ -240,6 +245,7 @@ def import_oasis_video(
         "ctx_limit": manifest["ctx_limit"],
         "context_frames": n_prompt_frames,
         "output_frames": generated_frames,
+        "output_frame_mode": output_frame_mode,
         "video_total_frames_decoded": len(frames),
     }
     imported_manifest_path = result_path / "manifest.json"

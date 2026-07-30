@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import copy
 import json
+import os
 import shutil
 import subprocess
 import random
@@ -445,15 +446,23 @@ def _run_real_episode_worker(
         "--_pair-idx",
         str(pair_idx),
     ]
-    result = None
     for attempt in range(1, retries + 1):
-        result = subprocess.run(cmd, text=True)
+        gradle_home = Path("/tmp") / f"persistence_probe_gradle_{os.getpid()}_{pair_idx:03d}_{arm}_{attempt}"
+        gradle_home.mkdir(parents=True, exist_ok=True)
+        (gradle_home / "gradle.properties").write_text(
+            "org.gradle.daemon=false\norg.gradle.jvmargs=-Xmx1024m\n",
+            encoding="utf-8",
+        )
+        env = os.environ.copy()
+        env["GRADLE_USER_HOME"] = str(gradle_home)
+        env["GRADLE_OPTS"] = f"{env.get('GRADLE_OPTS', '')} -Dorg.gradle.daemon=false".strip()
+        result = subprocess.run(cmd, text=True, env=env)
         if result.returncode == 0:
             break
         if attempt < retries:
             print(f"worker retry {attempt}/{retries} for pair {pair_idx:03d} {arm}", file=sys.stderr)
             time.sleep(10 * attempt)
-    if result is None or result.returncode != 0:
+    if result.returncode != 0:
         raise RecorderError(f"worker failed for pair {pair_idx:03d} {arm} after {retries} attempts")
     pair_id = f"{pair_idx:03d}_N{n_away}"
     episode_dir = output_root / f"{scenario}_{pair_id}_{arm}"

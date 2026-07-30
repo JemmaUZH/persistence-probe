@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 
 from recorder.contact_sheet import render_contact_sheet
+from recorder import record as record_mod
 from recorder.record import _probe_state_for_frame, _script_action, _to_minerl_action, record_mock
 from schema.validate import validate_episode
 
@@ -85,3 +86,36 @@ def test_probe_state_schedule_matches_control_and_intervention_arms():
         "absent",
         "absent",
     ]
+
+
+def test_real_cli_passes_worker_retry_and_timeout_options(monkeypatch, tmp_path):
+    captured = {}
+
+    def fake_record_real(**kwargs):
+        captured.update(kwargs)
+        return [tmp_path / "episode"]
+
+    monkeypatch.setattr(record_mod, "record_real", fake_record_real)
+
+    result = record_mod.main(
+        [
+            "--scenario",
+            "break_gold",
+            "--N",
+            "16",
+            "--pairs",
+            "2",
+            "--output-root",
+            str(tmp_path),
+            "--env-id",
+            "PersistenceProbeBreakGold-v0",
+            "--worker-retries",
+            "7",
+            "--worker-timeout",
+            "11",
+        ]
+    )
+
+    assert result == 0
+    assert captured["worker_retries"] == 7
+    assert captured["worker_timeout"] == 11

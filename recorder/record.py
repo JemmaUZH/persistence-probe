@@ -48,6 +48,13 @@ class RecorderError(Exception):
     """Raised when recording cannot satisfy the episode contract."""
 
 
+def _tail_text(path: Path, max_lines: int = 60) -> str:
+    if not path.exists():
+        return ""
+    lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    return "\n".join(lines[-max_lines:])
+
+
 def _write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
     with path.open("w", encoding="utf-8") as f:
         for row in rows:
@@ -414,6 +421,7 @@ def _run_real_episode_worker(
     seed: int,
     env_id: str,
     retries: int,
+    timeout_seconds: int,
 ) -> list[dict[str, Any]]:
     cmd = [
         sys.executable,
@@ -446,7 +454,13 @@ def _run_real_episode_worker(
         "--_pair-idx",
         str(pair_idx),
     ]
+    log_dir = output_root / "_worker_logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    last_log_path: Path | None = None
+    last_error = ""
     for attempt in range(1, retries + 1):
+        log_path = log_dir / f"{scenario}_{pair_idx:03d}_N{n_away}_{arm}_attempt{attempt}.log"
+        last_log_path = log_path
         gradle_home = Path("/tmp") / f"persistence_probe_gradle_{os.getpid()}_{pair_idx:03d}_{arm}_{attempt}"
         gradle_home.mkdir(parents=True, exist_ok=True)
         (gradle_home / "gradle.properties").write_text(
@@ -456,14 +470,41 @@ def _run_real_episode_worker(
         env = os.environ.copy()
         env["GRADLE_USER_HOME"] = str(gradle_home)
         env["GRADLE_OPTS"] = f"{env.get('GRADLE_OPTS', '')} -Dorg.gradle.daemon=false".strip()
-        result = subprocess.run(cmd, text=True, env=env)
+        env["PYTHONUNBUFFERED"] = "1"
+        with log_path.open("w", encoding="utf-8", errors="replace") as log:
+            log.write(" ".join(cmd) + "\n\n")
+            log.flush()
+            try:
+                result = subprocess.run(
+                    cmd,
+                    text=True,
+                    env=env,
+                    stdout=log,
+                    stderr=subprocess.STDOUT,
+                    timeout=timeout_seconds,
+                )
+            except subprocess.TimeoutExpired:
+                last_error = f"timed out after {timeout_seconds}s"
+                result = subprocess.CompletedProcess(cmd, 124)
+            else:
+                last_error = f"exit code {result.returncode}"
         if result.returncode == 0:
             break
         if attempt < retries:
-            print(f"worker retry {attempt}/{retries} for pair {pair_idx:03d} {arm}", file=sys.stderr)
+            tail = _tail_text(log_path, max_lines=30)
+            print(
+                f"worker retry {attempt}/{retries} for pair {pair_idx:03d} {arm}: {last_error}; log: {log_path}",
+                file=sys.stderr,
+            )
+            if tail:
+                print(tail, file=sys.stderr)
             time.sleep(10 * attempt)
     if result.returncode != 0:
-        raise RecorderError(f"worker failed for pair {pair_idx:03d} {arm} after {retries} attempts")
+        tail = _tail_text(last_log_path, max_lines=60) if last_log_path is not None else ""
+        details = f"; last log: {last_log_path}" if last_log_path is not None else ""
+        if tail:
+            details += f"\n--- worker log tail ---\n{tail}"
+        raise RecorderError(f"worker failed for pair {pair_idx:03d} {arm} after {retries} attempts: {last_error}{details}")
     pair_id = f"{pair_idx:03d}_N{n_away}"
     episode_dir = output_root / f"{scenario}_{pair_id}_{arm}"
     return _read_jsonl(episode_dir / "actions.jsonl")
@@ -535,6 +576,7 @@ def record_real(
     seed: int = 0,
     env_id: str = "PersistenceProbeBreakGold-v0",
     worker_retries: int = 3,
+    worker_timeout: int = 300,
 ) -> list[Path]:
     written: list[Path] = []
     for n_away in n_values:
@@ -556,6 +598,7 @@ def record_real(
                 seed=seed,
                 env_id=env_id,
                 retries=worker_retries,
+                timeout_seconds=worker_timeout,
             )
             time.sleep(3)
             intervene_actions = _run_real_episode_worker(
@@ -572,6 +615,7 @@ def record_real(
                 seed=seed,
                 env_id=env_id,
                 retries=worker_retries,
+                timeout_seconds=worker_timeout,
             )
             time.sleep(3)
             _assert_paired_actions(control_actions, intervene_actions, intervention_frame=k1)
@@ -596,6 +640,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--env-id", default="PersistenceProbeBreakGold-v0")
     parser.add_argument("--worker-retries", type=int, default=3)
+    parser.add_argument("--worker-timeout", type=int, default=300, help="Seconds before retrying a stuck MineRL worker.")
     parser.add_argument("--_single-real-arm", choices=["control", "intervene"], default=None, help=argparse.SUPPRESS)
     parser.add_argument("--_pair-idx", type=int, default=0, help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
@@ -648,6 +693,8 @@ def main(argv: list[str] | None = None) -> int:
                 fps=args.fps,
                 seed=args.seed,
                 env_id=args.env_id,
+                worker_retries=args.worker_retries,
+                worker_timeout=args.worker_timeout,
             )
     except (ImportError, ModuleNotFoundError) as exc:
         print(f"record failed: MineRL dependencies are unavailable: {exc}", file=sys.stderr)

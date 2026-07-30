@@ -2,7 +2,9 @@ FROM mcr.microsoft.com/devcontainers/python:3.8-bullseye
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN rm -f /etc/apt/sources.list.d/yarn.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends \
     openjdk-11-jdk \
     xvfb \
     xauth \

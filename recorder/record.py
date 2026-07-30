@@ -217,7 +217,7 @@ def _make_probe_env_spec(width: int, height: int, total_frames: int) -> Any:
             ]
 
         def create_rewardables(self) -> list[Any]:
-            return [handlers.ConstantReward(0.0)]
+            return []
 
         def create_agent_start(self) -> list[Any]:
             return [

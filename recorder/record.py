@@ -610,7 +610,6 @@ def main(argv: list[str] | None = None) -> int:
                 fps=args.fps,
                 seed=args.seed,
                 env_id=args.env_id,
-                worker_retries=args.worker_retries,
             )
             validate_episode(episode_dir)
             written = [episode_dir]

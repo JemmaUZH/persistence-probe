@@ -154,13 +154,13 @@ import sysconfig, sys
 print(f"build/lib.{sysconfig.get_platform()}-{sys.version_info.major}.{sys.version_info.minor}")
 PY
 )"
-cat > "$ENV_FILE" <<EOF
-export JAVA_HOME="$JDK8_DIR"
-export PATH="\\$JAVA_HOME/bin:\\$HOME/.local/bin:\\$PATH"
-export PYTHONPATH="$BUILD_ROOT/minerl-0.4.4/$BUILD_LIB:\\${PYTHONPATH:-}"
-export LIBGL_ALWAYS_SOFTWARE=1
-export JAVA_TOOL_OPTIONS="-Dorg.lwjgl.opengl.Display.allowSoftwareOpenGL=true"
-EOF
+{
+    printf 'export JAVA_HOME="%s"\n' "$JDK8_DIR"
+    printf 'export PATH="$JAVA_HOME/bin:$HOME/.local/bin:$PATH"\n'
+    printf 'export PYTHONPATH="%s/minerl-0.4.4/%s:${PYTHONPATH:-}"\n' "$BUILD_ROOT" "$BUILD_LIB"
+    printf 'export LIBGL_ALWAYS_SOFTWARE=1\n'
+    printf 'export JAVA_TOOL_OPTIONS="-Dorg.lwjgl.opengl.Display.allowSoftwareOpenGL=true"\n'
+} > "$ENV_FILE"
 
 cd "$ROOT"
 source "$ENV_FILE"

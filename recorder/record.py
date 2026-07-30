@@ -191,6 +191,13 @@ def _write_mock_episode(
 
 
 def _make_probe_env_spec(width: int, height: int, total_frames: int) -> Any:
+    import numpy as np
+
+    if not hasattr(np, "float"):
+        np.float = float  # type: ignore[attr-defined]
+    if not hasattr(np, "int"):
+        np.int = int  # type: ignore[attr-defined]
+
     from minerl.herobraine.env_specs.simple_embodiment import SimpleEmbodimentEnvSpec
     from minerl.herobraine.hero import handlers
 

@@ -412,6 +412,7 @@ def _run_real_episode_worker(
     fps: int,
     seed: int,
     env_id: str,
+    retries: int,
 ) -> list[dict[str, Any]]:
     cmd = [
         sys.executable,
@@ -444,9 +445,16 @@ def _run_real_episode_worker(
         "--_pair-idx",
         str(pair_idx),
     ]
-    result = subprocess.run(cmd, text=True)
-    if result.returncode != 0:
-        raise RecorderError(f"worker failed for pair {pair_idx:03d} {arm}")
+    result = None
+    for attempt in range(1, retries + 1):
+        result = subprocess.run(cmd, text=True)
+        if result.returncode == 0:
+            break
+        if attempt < retries:
+            print(f"worker retry {attempt}/{retries} for pair {pair_idx:03d} {arm}", file=sys.stderr)
+            time.sleep(10 * attempt)
+    if result is None or result.returncode != 0:
+        raise RecorderError(f"worker failed for pair {pair_idx:03d} {arm} after {retries} attempts")
     pair_id = f"{pair_idx:03d}_N{n_away}"
     episode_dir = output_root / f"{scenario}_{pair_id}_{arm}"
     return _read_jsonl(episode_dir / "actions.jsonl")
@@ -517,6 +525,7 @@ def record_real(
     fps: int = 20,
     seed: int = 0,
     env_id: str = "PersistenceProbeBreakGold-v0",
+    worker_retries: int = 3,
 ) -> list[Path]:
     written: list[Path] = []
     for n_away in n_values:
@@ -537,6 +546,7 @@ def record_real(
                 fps=fps,
                 seed=seed,
                 env_id=env_id,
+                retries=worker_retries,
             )
             time.sleep(3)
             intervene_actions = _run_real_episode_worker(
@@ -552,6 +562,7 @@ def record_real(
                 fps=fps,
                 seed=seed,
                 env_id=env_id,
+                retries=worker_retries,
             )
             time.sleep(3)
             _assert_paired_actions(control_actions, intervene_actions, intervention_frame=k1)
@@ -575,6 +586,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--fps", type=int, default=20)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--env-id", default="PersistenceProbeBreakGold-v0")
+    parser.add_argument("--worker-retries", type=int, default=3)
     parser.add_argument("--_single-real-arm", choices=["control", "intervene"], default=None, help=argparse.SUPPRESS)
     parser.add_argument("--_pair-idx", type=int, default=0, help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
@@ -598,6 +610,7 @@ def main(argv: list[str] | None = None) -> int:
                 fps=args.fps,
                 seed=args.seed,
                 env_id=args.env_id,
+                worker_retries=args.worker_retries,
             )
             validate_episode(episode_dir)
             written = [episode_dir]

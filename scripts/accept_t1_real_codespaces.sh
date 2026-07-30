@@ -4,13 +4,17 @@ set -euo pipefail
 source .minerl-codespaces-env
 
 OUT_ROOT="${1:-episodes}"
+ENV_ID="${T1_ENV_ID:-MineRLBasaltFindCave-v0}"
+WORKER_RETRIES="${T1_WORKER_RETRIES:-4}"
 
 xvfb-run -a -s "-screen 0 1280x720x24 +extension RANDR +extension GLX +render" \
   python -m recorder.record \
     --scenario break_gold \
     --N 16 \
     --pairs 2 \
-    --output-root "$OUT_ROOT"
+    --output-root "$OUT_ROOT" \
+    --env-id "$ENV_ID" \
+    --worker-retries "$WORKER_RETRIES"
 
 for episode in "$OUT_ROOT"/break_gold_*_N16_*; do
   python -m schema.validate "$episode"

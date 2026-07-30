@@ -1,6 +1,7 @@
 .DS_Store
 __pycache__/
 .pytest_cache/
+*.egg-info/
 .minerl-codespaces-env
 
 # Data and generated artifacts per SPEC.md.

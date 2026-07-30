@@ -102,7 +102,19 @@ ls -lh scratch/minerl_smoke
 
 ## 6. Decision Gate
 
-If the smoke passes, the next implementation task is the real T1 backend:
+The current real recorder acceptance command is:
+
+```bash
+bash scripts/accept_t1_real_codespaces.sh episodes
+```
+
+This records two paired `N=16` MineRL episodes with the stable
+`MineRLBasaltFindCave-v0` backend, validates all four episode directories, and
+renders contact sheets. Set `T1_ENV_ID=PersistenceProbeBreakGold-v0` only when
+debugging the custom gold-block Malmo mission; that custom mission is not yet
+the accepted backend.
+
+If the smoke passes, the next implementation task is the final gold-block T1 backend:
 
 ```text
 Implement recorder.record real MineRL backend:

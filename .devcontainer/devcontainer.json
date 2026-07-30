@@ -13,6 +13,6 @@
       ]
     }
   },
-  "postCreateCommand": "python -m pip install -e . && python -m pip install 'pip<24' 'setuptools<60' wheel",
+  "postCreateCommand": "python -m pip install --upgrade 'pip<24' 'setuptools<60' wheel && python -m pip install -e .",
   "remoteUser": "vscode"
 }

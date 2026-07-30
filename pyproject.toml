@@ -1,7 +1,7 @@
 [project]
 name = "persistence-probe"
 version = "0.0.1"
-requires-python = ">=3.10"
+requires-python = ">=3.8"
 dependencies = [
   "jsonschema>=4.0",
   "Pillow>=9.0",

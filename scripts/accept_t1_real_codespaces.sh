@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-source .minerl-codespaces-env
+if [[ -f .minerl-codespaces-env ]]; then
+  source .minerl-codespaces-env
+fi
 
 OUT_ROOT="${1:-episodes}"
 ENV_ID="${T1_ENV_ID:-MineRLBasaltFindCave-v0}"

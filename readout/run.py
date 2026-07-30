@@ -120,31 +120,59 @@ def _find_probe_crop_candidate(frame_path: Path) -> tuple[tuple[int, int, int, i
     with Image.open(frame_path) as img:
         rgb = img.convert("RGB")
         width, height = rgb.size
+        scan_width = min(width, 160)
+        scale = width / scan_width
+        scan_height = max(1, int(height / scale))
+        resample = getattr(getattr(Image, "Resampling", Image), "BILINEAR")
+        scan = rgb.resize((scan_width, scan_height), resample)
 
         best_score = float("-inf")
-        best_box = (int(width * 0.43), int(height * 0.42), int(width * 0.57), int(height * 0.68))
-        for crop_width, crop_height in _candidate_crop_sizes(width, height):
+        best_box = (
+            int(scan_width * 0.43),
+            int(scan_height * 0.42),
+            int(scan_width * 0.57),
+            int(scan_height * 0.68),
+        )
+        for crop_width, crop_height in _candidate_crop_sizes(scan_width, scan_height):
             step_x = max(4, crop_width // 3)
             step_y = max(4, crop_height // 3)
-            x_min = max(0, int(width * 0.15))
-            x_max = min(width - crop_width, int(width * 0.85))
-            y_min = max(0, int(height * 0.10))
-            y_max = min(height - crop_height, int(height * 0.72))
+            x_min = max(0, int(scan_width * 0.15))
+            x_max = min(scan_width - crop_width, int(scan_width * 0.85))
+            y_min = max(0, int(scan_height * 0.10))
+            y_max = min(scan_height - crop_height, int(scan_height * 0.72))
             for y in range(y_min, y_max + 1, step_y):
                 for x in range(x_min, x_max + 1, step_x):
                     box = (x, y, x + crop_width, y + crop_height)
-                    center_bias = abs((x + crop_width / 2) - width / 2) / width
-                    score = _gold_score(rgb.crop(box)) - center_bias * 5.0
+                    center_bias = abs((x + crop_width / 2) - scan_width / 2) / scan_width
+                    score = _gold_score(scan.crop(box)) - center_bias * 5.0
                     if score > best_score:
                         best_score = score
                         best_box = box
-    return best_box, best_score
+        full_box = (
+            max(0, min(width - 1, int(best_box[0] * scale))),
+            max(0, min(height - 1, int(best_box[1] * scale))),
+            max(1, min(width, int(best_box[2] * scale))),
+            max(1, min(height, int(best_box[3] * scale))),
+        )
+    return full_box, _gold_score(rgb.crop(full_box))
 
 
 def _visible_probe_crop_boxes(control_episode: Path) -> dict[int, tuple[int, int, int, int]]:
     scored: list[tuple[int, tuple[int, int, int, int], float]] = []
     return_start = _return_start(control_episode)
-    for frame_idx in _return_frame_indices(control_episode):
+    candidate_indices = [
+        frame_idx
+        for frame_idx in _return_frame_indices(control_episode)
+        if _state_at_frame(control_episode, frame_idx) == "present"
+    ]
+    if len(candidate_indices) > 12:
+        stride = max(1, len(candidate_indices) // 12)
+        sampled = candidate_indices[::stride]
+        if candidate_indices[-1] not in sampled:
+            sampled.append(candidate_indices[-1])
+        candidate_indices = sampled
+
+    for frame_idx in candidate_indices:
         if _state_at_frame(control_episode, frame_idx) != "present":
             continue
         box, score = _find_probe_crop_candidate(_frame_path(control_episode, frame_idx))

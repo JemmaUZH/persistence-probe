@@ -3,8 +3,11 @@ from __future__ import annotations
 import argparse
 import copy
 import json
+import shutil
+import subprocess
 import random
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -333,6 +336,8 @@ def _write_real_episode(
     seed: int,
     env_id: str,
 ) -> list[dict[str, Any]]:
+    if episode_dir.exists():
+        shutil.rmtree(episode_dir)
     frames_dir = episode_dir / "frames"
     frames_dir.mkdir(parents=True, exist_ok=True)
     intervention_frame = k1
@@ -390,6 +395,64 @@ def _write_real_episode(
     _write_jsonl(episode_dir / "state.jsonl", states)
     _write_jsonl(episode_dir / "events.jsonl", events)
     return actions
+
+
+def _read_jsonl(path: Path) -> list[dict[str, Any]]:
+    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+
+
+def _run_real_episode_worker(
+    *,
+    output_root: Path,
+    scenario: str,
+    pair_idx: int,
+    arm: str,
+    n_away: int,
+    k1: int,
+    k2: int,
+    width: int,
+    height: int,
+    fps: int,
+    seed: int,
+    env_id: str,
+) -> list[dict[str, Any]]:
+    cmd = [
+        sys.executable,
+        "-m",
+        "recorder.record",
+        "--scenario",
+        scenario,
+        "--N",
+        str(n_away),
+        "--pairs",
+        "1",
+        "--output-root",
+        str(output_root),
+        "--K1",
+        str(k1),
+        "--K2",
+        str(k2),
+        "--width",
+        str(width),
+        "--height",
+        str(height),
+        "--fps",
+        str(fps),
+        "--seed",
+        str(seed),
+        "--env-id",
+        env_id,
+        "--_single-real-arm",
+        arm,
+        "--_pair-idx",
+        str(pair_idx),
+    ]
+    result = subprocess.run(cmd, text=True)
+    if result.returncode != 0:
+        raise RecorderError(f"worker failed for pair {pair_idx:03d} {arm}")
+    pair_id = f"{pair_idx:03d}_N{n_away}"
+    episode_dir = output_root / f"{scenario}_{pair_id}_{arm}"
+    return _read_jsonl(episode_dir / "actions.jsonl")
 
 
 def record_mock(
@@ -464,10 +527,10 @@ def record_real(
             pair_id = f"{pair_idx:03d}_N{n_away}"
             control_dir = output_root / f"{scenario}_{pair_id}_control"
             intervene_dir = output_root / f"{scenario}_{pair_id}_intervene"
-            control_actions = _write_real_episode(
-                control_dir,
+            control_actions = _run_real_episode_worker(
+                output_root=output_root,
                 scenario=scenario,
-                pair_id=pair_idx,
+                pair_idx=pair_idx,
                 arm="control",
                 n_away=n_away,
                 k1=k1,
@@ -478,10 +541,11 @@ def record_real(
                 seed=seed,
                 env_id=env_id,
             )
-            intervene_actions = _write_real_episode(
-                intervene_dir,
+            time.sleep(3)
+            intervene_actions = _run_real_episode_worker(
+                output_root=output_root,
                 scenario=scenario,
-                pair_id=pair_idx,
+                pair_idx=pair_idx,
                 arm="intervene",
                 n_away=n_away,
                 k1=k1,
@@ -492,6 +556,7 @@ def record_real(
                 seed=seed,
                 env_id=env_id,
             )
+            time.sleep(3)
             _assert_paired_actions(control_actions, intervene_actions, intervention_frame=k1)
             for episode_dir in (control_dir, intervene_dir):
                 validate_episode(episode_dir)
@@ -513,10 +578,33 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--fps", type=int, default=20)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--env-id", default="PersistenceProbeBreakGold-v0")
+    parser.add_argument("--_single-real-arm", choices=["control", "intervene"], default=None, help=argparse.SUPPRESS)
+    parser.add_argument("--_pair-idx", type=int, default=0, help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
 
     try:
-        if args.mock:
+        if args._single_real_arm is not None:
+            if len(args.n_values) != 1:
+                raise RecorderError("single real worker expects exactly one N value")
+            pair_id = f"{args._pair_idx:03d}_N{args.n_values[0]}"
+            episode_dir = args.output_root / f"{args.scenario}_{pair_id}_{args._single_real_arm}"
+            _write_real_episode(
+                episode_dir,
+                scenario=args.scenario,
+                pair_id=args._pair_idx,
+                arm=args._single_real_arm,
+                n_away=args.n_values[0],
+                k1=args.K1,
+                k2=args.K2,
+                width=args.width,
+                height=args.height,
+                fps=args.fps,
+                seed=args.seed,
+                env_id=args.env_id,
+            )
+            validate_episode(episode_dir)
+            written = [episode_dir]
+        elif args.mock:
             written = record_mock(
                 output_root=args.output_root,
                 scenario=args.scenario,

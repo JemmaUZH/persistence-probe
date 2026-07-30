@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import json
+import os
+import sys
 
 from recorder.contact_sheet import render_contact_sheet
 from recorder import record as record_mod
-from recorder.record import _probe_state_for_frame, _script_action, _to_minerl_action, record_mock
+from recorder.record import _probe_state_for_frame, _run_logged_subprocess, _script_action, _to_minerl_action, record_mock
 from schema.validate import validate_episode
 
 
@@ -119,3 +121,17 @@ def test_real_cli_passes_worker_retry_and_timeout_options(monkeypatch, tmp_path)
     assert result == 0
     assert captured["worker_retries"] == 7
     assert captured["worker_timeout"] == 11
+
+
+def test_logged_subprocess_timeout_returns_124_and_keeps_log(tmp_path):
+    log_path = tmp_path / "worker.log"
+    with log_path.open("w", encoding="utf-8") as log:
+        result = _run_logged_subprocess(
+            [sys.executable, "-c", "import time; print('started', flush=True); time.sleep(30)"],
+            env=os.environ.copy(),
+            log=log,
+            timeout_seconds=1,
+        )
+
+    assert result.returncode == 124
+    assert "started" in log_path.read_text(encoding="utf-8")

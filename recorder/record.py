@@ -5,6 +5,7 @@ import copy
 import json
 import os
 import shutil
+import signal
 import subprocess
 import random
 import sys
@@ -53,6 +54,30 @@ def _tail_text(path: Path, max_lines: int = 60) -> str:
         return ""
     lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
     return "\n".join(lines[-max_lines:])
+
+
+def _run_logged_subprocess(cmd: list[str], *, env: dict[str, str], log: Any, timeout_seconds: int) -> subprocess.CompletedProcess:
+    process = subprocess.Popen(
+        cmd,
+        text=True,
+        env=env,
+        stdout=log,
+        stderr=subprocess.STDOUT,
+        start_new_session=True,
+    )
+    try:
+        return_code = process.wait(timeout=timeout_seconds)
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(process.pid, signal.SIGTERM)
+            process.wait(timeout=10)
+        except ProcessLookupError:
+            pass
+        except subprocess.TimeoutExpired:
+            os.killpg(process.pid, signal.SIGKILL)
+            process.wait()
+        return subprocess.CompletedProcess(cmd, 124)
+    return subprocess.CompletedProcess(cmd, return_code)
 
 
 def _write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
@@ -474,18 +499,9 @@ def _run_real_episode_worker(
         with log_path.open("w", encoding="utf-8", errors="replace") as log:
             log.write(" ".join(cmd) + "\n\n")
             log.flush()
-            try:
-                result = subprocess.run(
-                    cmd,
-                    text=True,
-                    env=env,
-                    stdout=log,
-                    stderr=subprocess.STDOUT,
-                    timeout=timeout_seconds,
-                )
-            except subprocess.TimeoutExpired:
+            result = _run_logged_subprocess(cmd, env=env, log=log, timeout_seconds=timeout_seconds)
+            if result.returncode == 124:
                 last_error = f"timed out after {timeout_seconds}s"
-                result = subprocess.CompletedProcess(cmd, 124)
             else:
                 last_error = f"exit code {result.returncode}"
         if result.returncode == 0:

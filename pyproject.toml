@@ -21,3 +21,6 @@ oasis = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+
+[tool.setuptools]
+packages = ["schema", "recorder", "runner", "readout"]

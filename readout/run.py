@@ -23,15 +23,19 @@ class ReadoutError(Exception):
 @dataclass(frozen=True)
 class TemplateReadout:
     crop_box: tuple[int, int, int, int]
+    crop_boxes_by_offset: dict[int, tuple[int, int, int, int]]
+    vote_offsets: tuple[int, ...]
     threshold: float
     real_frame_accuracy: float
     calibration_frames: int
     present_refs: tuple[Image.Image, ...]
     absent_refs: tuple[Image.Image, ...]
 
-    def classify(self, frame_path: Path) -> tuple[str, float]:
+    def classify(self, frame_path: Path, frame_offset: int) -> tuple[str, float]:
+        if frame_offset not in self.crop_boxes_by_offset:
+            raise ReadoutError(f"frame offset {frame_offset} is outside calibrated visible return frames")
         with Image.open(frame_path) as img:
-            crop = _normalized_crop(img, self.crop_box)
+            crop = _normalized_crop(img, self.crop_boxes_by_offset[frame_offset])
         present_distance = min(_mean_abs_distance(crop, ref) for ref in self.present_refs)
         absent_distance = min(_mean_abs_distance(crop, ref) for ref in self.absent_refs)
         score = absent_distance - present_distance
@@ -112,7 +116,7 @@ def _candidate_crop_sizes(width: int, height: int) -> list[tuple[int, int]]:
     return sizes
 
 
-def _find_probe_crop_box(frame_path: Path) -> tuple[int, int, int, int]:
+def _find_probe_crop_candidate(frame_path: Path) -> tuple[tuple[int, int, int, int], float]:
     with Image.open(frame_path) as img:
         rgb = img.convert("RGB")
         width, height = rgb.size
@@ -125,7 +129,7 @@ def _find_probe_crop_box(frame_path: Path) -> tuple[int, int, int, int]:
             x_min = max(0, int(width * 0.15))
             x_max = min(width - crop_width, int(width * 0.85))
             y_min = max(0, int(height * 0.10))
-            y_max = min(height - crop_height, int(height * 0.85))
+            y_max = min(height - crop_height, int(height * 0.72))
             for y in range(y_min, y_max + 1, step_y):
                 for x in range(x_min, x_max + 1, step_x):
                     box = (x, y, x + crop_width, y + crop_height)
@@ -134,18 +138,29 @@ def _find_probe_crop_box(frame_path: Path) -> tuple[int, int, int, int]:
                     if score > best_score:
                         best_score = score
                         best_box = box
-    return best_box
+    return best_box, best_score
 
 
-def _localized_crop_box(control_episode: Path) -> tuple[int, int, int, int]:
-    candidates = [
-        _frame_path(control_episode, frame_idx)
-        for frame_idx in _return_frame_indices(control_episode)
-        if _state_at_frame(control_episode, frame_idx) == "present"
-    ]
-    if not candidates:
+def _visible_probe_crop_boxes(control_episode: Path) -> dict[int, tuple[int, int, int, int]]:
+    scored: list[tuple[int, tuple[int, int, int, int], float]] = []
+    return_start = _return_start(control_episode)
+    for frame_idx in _return_frame_indices(control_episode):
+        if _state_at_frame(control_episode, frame_idx) != "present":
+            continue
+        box, score = _find_probe_crop_candidate(_frame_path(control_episode, frame_idx))
+        scored.append((frame_idx, box, score))
+
+    if not scored:
         raise ReadoutError(f"{control_episode}: no present return frames available for probe localization")
-    return _find_probe_crop_box(candidates[0])
+
+    scores = [score for _frame_idx, _box, score in scored]
+    max_score = max(scores)
+    baseline = statistics.median(scores)
+    visible_threshold = baseline + (max_score - baseline) * 0.35
+    visible = [(frame_idx, box, score) for frame_idx, box, score in scored if score >= visible_threshold]
+    if len(visible) < 3:
+        visible = sorted(scored, key=lambda item: item[2], reverse=True)[: min(3, len(scored))]
+    return {frame_idx - return_start: box for frame_idx, box, _score in sorted(visible)}
 
 
 def _normalized_crop(img: Image.Image, crop_box: tuple[int, int, int, int]) -> Image.Image:
@@ -193,8 +208,17 @@ def _labeled_return_crops(episode_dir: Path, crop_box: tuple[int, int, int, int]
 
 
 def _build_template_readout(control_episode: Path, intervene_episode: Path) -> TemplateReadout:
-    crop_box = _localized_crop_box(control_episode)
-    labeled = _labeled_return_crops(control_episode, crop_box) + _labeled_return_crops(intervene_episode, crop_box)
+    crop_boxes_by_offset = _visible_probe_crop_boxes(control_episode)
+    representative_offset = sorted(crop_boxes_by_offset)[len(crop_boxes_by_offset) // 2]
+    crop_box = crop_boxes_by_offset[representative_offset]
+    control_return_start = _return_start(control_episode)
+    intervene_return_start = _return_start(intervene_episode)
+    labeled: list[tuple[Image.Image, str]] = []
+    for offset, frame_crop_box in crop_boxes_by_offset.items():
+        for episode_dir, return_start in ((control_episode, control_return_start), (intervene_episode, intervene_return_start)):
+            frame_idx = return_start + offset
+            with Image.open(_frame_path(episode_dir, frame_idx)) as img:
+                labeled.append((_normalized_crop(img, frame_crop_box), _state_at_frame(episode_dir, frame_idx)))
     if len({label for _crop, label in labeled}) != 2:
         raise ReadoutError(f"{control_episode.parent}: real-frame calibration needs both present and absent labels")
 
@@ -221,6 +245,8 @@ def _build_template_readout(control_episode: Path, intervene_episode: Path) -> T
 
     return TemplateReadout(
         crop_box=crop_box,
+        crop_boxes_by_offset=crop_boxes_by_offset,
+        vote_offsets=tuple(sorted(crop_boxes_by_offset)),
         threshold=threshold,
         real_frame_accuracy=accuracy,
         calibration_frames=len(labeled),
@@ -323,6 +349,7 @@ def run_readout(
                     "pair_id": pair_id,
                     "N_away": n_away,
                     "crop_box": list(template.crop_box),
+                    "vote_offsets": list(template.vote_offsets),
                     "threshold": template.threshold,
                     "real_frame_accuracy": template.real_frame_accuracy,
                     "calibration_frames": template.calibration_frames,
@@ -345,10 +372,20 @@ def run_readout(
             real_frame_accuracy = None
         else:
             template = episode_to_readout[episode_dir.name]
-            predictions_and_scores = [template.classify(path) for path in generated_frames]
+            vote_frames = [
+                (offset, generated_frames[offset])
+                for offset in template.vote_offsets
+                if offset < len(generated_frames)
+            ]
+            if not vote_frames:
+                raise ReadoutError(f"{episode_dir}: no generated frames overlap calibrated visible return frames")
+            predictions_and_scores = [template.classify(path, offset) for offset, path in vote_frames]
             frame_predictions = [prediction for prediction, _score in predictions_and_scores]
             frame_scores = [score for _prediction, score in predictions_and_scores]
             crop_box = list(template.crop_box)
+            crop_boxes_by_vote_frame = {
+                path: list(template.crop_boxes_by_offset[offset]) for offset, path in vote_frames
+            }
             real_frame_accuracy = template.real_frame_accuracy
 
         predicted_state = _majority_vote(frame_predictions)
@@ -367,11 +404,13 @@ def run_readout(
             "predicted_state": predicted_state,
             "correct_state": correct,
             "generated_frames": len(generated_frames),
+            "voted_frames": len(frame_predictions),
             "crop_box": json.dumps(crop_box) if crop_box is not None else "",
             "real_frame_accuracy": real_frame_accuracy if real_frame_accuracy is not None else "",
         }
         rows.append(row)
-        for frame_path, prediction, score in zip(generated_frames, frame_predictions, frame_scores):
+        audit_frames = generated_frames if mock else [path for _offset, path in vote_frames]
+        for frame_path, prediction, score in zip(audit_frames, frame_predictions, frame_scores):
             if len(audit_items) >= audit_sample:
                 break
             audit_items.append(
@@ -381,7 +420,7 @@ def run_readout(
                     "prediction": prediction,
                     "target": target_state,
                     "score": score,
-                    "crop_box": crop_box,
+                    "crop_box": None if mock else crop_boxes_by_vote_frame[frame_path],
                 }
             )
 

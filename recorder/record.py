@@ -486,14 +486,15 @@ def _run_real_episode_worker(
     for attempt in range(1, retries + 1):
         log_path = log_dir / f"{scenario}_{pair_idx:03d}_N{n_away}_{arm}_attempt{attempt}.log"
         last_log_path = log_path
-        gradle_home = Path("/tmp") / f"persistence_probe_gradle_{os.getpid()}_{pair_idx:03d}_{arm}_{attempt}"
-        gradle_home.mkdir(parents=True, exist_ok=True)
-        (gradle_home / "gradle.properties").write_text(
-            "org.gradle.daemon=false\norg.gradle.jvmargs=-Xmx1024m\n",
-            encoding="utf-8",
-        )
         env = os.environ.copy()
-        env["GRADLE_USER_HOME"] = str(gradle_home)
+        if env.get("PERSISTENCE_PROBE_ISOLATE_GRADLE") == "1":
+            gradle_home = Path("/tmp") / f"persistence_probe_gradle_{os.getpid()}_{pair_idx:03d}_{arm}_{attempt}"
+            gradle_home.mkdir(parents=True, exist_ok=True)
+            (gradle_home / "gradle.properties").write_text(
+                "org.gradle.daemon=false\norg.gradle.jvmargs=-Xmx1024m\n",
+                encoding="utf-8",
+            )
+            env["GRADLE_USER_HOME"] = str(gradle_home)
         env["GRADLE_OPTS"] = f"{env.get('GRADLE_OPTS', '')} -Dorg.gradle.daemon=false".strip()
         env["PYTHONUNBUFFERED"] = "1"
         with log_path.open("w", encoding="utf-8", errors="replace") as log:

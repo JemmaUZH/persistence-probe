@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 
 from recorder.contact_sheet import render_contact_sheet
-from recorder.record import record_mock
+from recorder.record import _probe_state_for_frame, _script_action, _to_minerl_action, record_mock
 from schema.validate import validate_episode
 
 
@@ -36,3 +36,52 @@ def test_record_mock_writes_valid_paired_episodes_and_contact_sheet(tmp_path):
             assert control_action != intervene_action
         else:
             assert control_action == intervene_action
+
+
+class _DummyActionSpace:
+    def noop(self):
+        return {
+            "attack": 0,
+            "back": 0,
+            "camera": [0.0, 0.0],
+            "forward": 0,
+            "jump": 0,
+            "left": 0,
+            "right": 0,
+            "sneak": 0,
+            "sprint": 0,
+            "use": 0,
+        }
+
+
+def test_real_action_adapter_preserves_scripted_intervention_boundary():
+    k1 = 4
+    look_away = 5
+    return_start = 8
+
+    control = [_script_action(idx, k1, look_away, return_start, "control") for idx in range(12)]
+    intervene = [_script_action(idx, k1, look_away, return_start, "intervene") for idx in range(12)]
+
+    for idx, (control_action, intervene_action) in enumerate(zip(control, intervene)):
+        if idx == k1:
+            assert _to_minerl_action(_DummyActionSpace(), intervene_action)["attack"] == 1
+            assert control_action != intervene_action
+        else:
+            assert control_action == intervene_action
+
+
+def test_probe_state_schedule_matches_control_and_intervention_arms():
+    assert [_probe_state_for_frame(idx, 3, "control") for idx in range(5)] == [
+        "present",
+        "present",
+        "present",
+        "present",
+        "present",
+    ]
+    assert [_probe_state_for_frame(idx, 3, "intervene") for idx in range(5)] == [
+        "present",
+        "present",
+        "present",
+        "absent",
+        "absent",
+    ]

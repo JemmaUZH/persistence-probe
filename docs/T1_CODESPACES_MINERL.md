@@ -105,19 +105,23 @@ ls -lh scratch/minerl_smoke
 The current real recorder acceptance command is:
 
 ```bash
-bash scripts/accept_t1_real_codespaces.sh episodes
+export JAVA_HOME=/home/vscode/.jdks/jdk8
+export PATH="$JAVA_HOME/bin:$HOME/.local/bin:$PATH"
+export PYTHONPATH=/tmp/minerl_build_proxy_1785423349/minerl-0.4.4/build/lib.linux-x86_64-3.8:$PYTHONPATH
+export LIBGL_ALWAYS_SOFTWARE=1
+export JAVA_TOOL_OPTIONS="-Dorg.lwjgl.opengl.Display.allowSoftwareOpenGL=true"
+T1_ENV_ID=PersistenceProbeBreakGold-v0 T1_WORKER_RETRIES=2 T1_WORKER_TIMEOUT=420 \
+  bash scripts/accept_t1_real_codespaces.sh episodes
 ```
 
-This records two paired `N=16` MineRL episodes with the stable
-`MineRLBasaltFindCave-v0` backend, validates all four episode directories, and
-renders contact sheets. Set `T1_ENV_ID=PersistenceProbeBreakGold-v0` only when
-debugging the custom gold-block Malmo mission; that custom mission is not yet
-the accepted backend.
+This records two paired `N=16` MineRL episodes with the custom
+`PersistenceProbeBreakGold-v0` gold-block backend, validates all four episode
+directories, and renders contact sheets. To run the older stable BASALT plumbing
+backend instead, leave `T1_ENV_ID` unset.
 
-If the smoke passes, the next implementation task is the final gold-block T1 backend:
+The T1 backend now covers:
 
 ```text
-Implement recorder.record real MineRL backend:
 - fixed seed/spawn where MineRL supports it
 - scripted control/intervene action sequence
 - save frames/actions/state/events per SPEC.md
@@ -125,5 +129,5 @@ Implement recorder.record real MineRL backend:
 - render contact sheet
 ```
 
-If the smoke fails after one focused attempt, use a Linux VM with a more
-controlled Docker image. Do not spend days debugging Codespaces/Malmo blindly.
+If this command fails after one focused retry, inspect
+`episodes/_worker_logs/*.log` and the newest `logs/mc_*.log`.

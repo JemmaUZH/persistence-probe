@@ -226,7 +226,25 @@ def _write_mock_episode(
     return actions
 
 
-def _make_probe_env_spec(width: int, height: int, total_frames: int) -> Any:
+def _probe_panel_xml(probe_size: int) -> str:
+    if probe_size < 1:
+        raise RecorderError("probe_size must be >= 1")
+    x0 = -(probe_size // 2)
+    y0 = 5
+    blocks = []
+    for dx in range(probe_size):
+        for dy in range(probe_size):
+            blocks.append(f'<DrawBlock x="{x0 + dx}" y="{y0 + dy}" z="4" type="gold_block"/>')
+    x_min = x0 - 2
+    x_max = x0 + probe_size + 1
+    y_min = y0 - 1
+    y_max = y0 + probe_size + 1
+    blocks.append(f'<DrawCuboid x1="{x_min}" y1="{y_min}" z1="6" x2="{x_max}" y2="{y_max}" z2="6" type="stone"/>')
+    blocks.append(f'<DrawCuboid x1="{x0}" y1="{y0 - 1}" z1="4" x2="{x0 + probe_size - 1}" y2="{y0 - 1}" z2="4" type="stone"/>')
+    return "\n".join(blocks)
+
+
+def _make_probe_env_spec(width: int, height: int, total_frames: int, probe_size: int) -> Any:
     import numpy as np
 
     if not hasattr(np, "float"):
@@ -270,13 +288,7 @@ def _make_probe_env_spec(width: int, height: int, total_frames: int) -> Any:
 
         def create_server_decorators(self) -> list[Any]:
             return [
-                handlers.DrawingDecorator(
-                    """
-                    <DrawBlock x="0" y="5" z="4" type="gold_block"/>
-                    <DrawBlock x="0" y="4" z="4" type="stone"/>
-                    <DrawCuboid x1="-2" y1="4" z1="6" x2="2" y2="7" z2="6" type="stone"/>
-                    """
-                )
+                handlers.DrawingDecorator(_probe_panel_xml(probe_size))
             ]
 
         def create_server_quit_producers(self) -> list[Any]:
@@ -300,9 +312,9 @@ def _make_probe_env_spec(width: int, height: int, total_frames: int) -> Any:
     return PersistenceProbeEnvSpec()
 
 
-def _make_real_env(env_id: str, width: int, height: int, total_frames: int) -> Any:
+def _make_real_env(env_id: str, width: int, height: int, total_frames: int, probe_size: int) -> Any:
     if env_id == "PersistenceProbeBreakGold-v0":
-        return _make_probe_env_spec(width, height, total_frames).make()
+        return _make_probe_env_spec(width, height, total_frames, probe_size).make()
 
     import gym
     import minerl  # noqa: F401
@@ -365,6 +377,7 @@ def _write_real_episode(
     fps: int,
     seed: int,
     env_id: str,
+    probe_size: int,
 ) -> list[dict[str, Any]]:
     if episode_dir.exists():
         shutil.rmtree(episode_dir)
@@ -391,7 +404,7 @@ def _write_real_episode(
 
     actions: list[dict[str, Any]] = []
     states: list[dict[str, Any]] = []
-    env = _make_real_env(env_id, width, height, total_frames)
+    env = _make_real_env(env_id, width, height, total_frames, probe_size)
     try:
         if hasattr(env, "seed"):
             env.seed(seed + pair_id)
@@ -447,6 +460,7 @@ def _run_real_episode_worker(
     env_id: str,
     retries: int,
     timeout_seconds: int,
+    probe_size: int,
 ) -> list[dict[str, Any]]:
     cmd = [
         sys.executable,
@@ -474,6 +488,8 @@ def _run_real_episode_worker(
         str(seed),
         "--env-id",
         env_id,
+        "--probe-size",
+        str(probe_size),
         "--_single-real-arm",
         arm,
         "--_pair-idx",
@@ -594,6 +610,7 @@ def record_real(
     env_id: str = "PersistenceProbeBreakGold-v0",
     worker_retries: int = 3,
     worker_timeout: int = 300,
+    probe_size: int = 1,
 ) -> list[Path]:
     written: list[Path] = []
     for n_away in n_values:
@@ -616,6 +633,7 @@ def record_real(
                 env_id=env_id,
                 retries=worker_retries,
                 timeout_seconds=worker_timeout,
+                probe_size=probe_size,
             )
             time.sleep(3)
             intervene_actions = _run_real_episode_worker(
@@ -633,6 +651,7 @@ def record_real(
                 env_id=env_id,
                 retries=worker_retries,
                 timeout_seconds=worker_timeout,
+                probe_size=probe_size,
             )
             time.sleep(3)
             _assert_paired_actions(control_actions, intervene_actions, intervention_frame=k1)
@@ -656,6 +675,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--fps", type=int, default=20)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--env-id", default="PersistenceProbeBreakGold-v0")
+    parser.add_argument("--probe-size", type=int, default=1, help="Gold panel side length for the custom MineRL probe.")
     parser.add_argument("--worker-retries", type=int, default=3)
     parser.add_argument("--worker-timeout", type=int, default=300, help="Seconds before retrying a stuck MineRL worker.")
     parser.add_argument("--_single-real-arm", choices=["control", "intervene"], default=None, help=argparse.SUPPRESS)
@@ -681,6 +701,7 @@ def main(argv: list[str] | None = None) -> int:
                 fps=args.fps,
                 seed=args.seed,
                 env_id=args.env_id,
+                probe_size=args.probe_size,
             )
             validate_episode(episode_dir)
             written = [episode_dir]
@@ -712,6 +733,7 @@ def main(argv: list[str] | None = None) -> int:
                 env_id=args.env_id,
                 worker_retries=args.worker_retries,
                 worker_timeout=args.worker_timeout,
+                probe_size=args.probe_size,
             )
     except (ImportError, ModuleNotFoundError) as exc:
         print(f"record failed: MineRL dependencies are unavailable: {exc}", file=sys.stderr)

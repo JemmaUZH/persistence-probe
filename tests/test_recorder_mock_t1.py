@@ -6,7 +6,14 @@ import sys
 
 from recorder.contact_sheet import render_contact_sheet
 from recorder import record as record_mod
-from recorder.record import _probe_state_for_frame, _run_logged_subprocess, _script_action, _to_minerl_action, record_mock
+from recorder.record import (
+    _probe_panel_xml,
+    _probe_state_for_frame,
+    _run_logged_subprocess,
+    _script_action,
+    _to_minerl_action,
+    record_mock,
+)
 from schema.validate import validate_episode
 
 
@@ -88,6 +95,13 @@ def test_probe_state_schedule_matches_control_and_intervention_arms():
         "absent",
         "absent",
     ]
+
+
+def test_probe_panel_xml_scales_gold_panel_without_schema_fields():
+    xml = _probe_panel_xml(2)
+
+    assert xml.count('type="gold_block"') == 4
+    assert 'type="stone"' in xml
 
 
 def test_real_cli_passes_worker_retry_and_timeout_options(monkeypatch, tmp_path):
